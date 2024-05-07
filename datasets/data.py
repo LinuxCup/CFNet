@@ -12,6 +12,7 @@ import random
 import json
 from . import utils, copy_paste
 import os
+import pdb
 
 
 def make_point_feat(pcds_xyzi, pcds_coord, pcds_sphere_coord, Voxel):
@@ -238,7 +239,36 @@ class DataloadVal(Dataset):
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
     
+    def __getitem___zhito(self, index):
+        fname_pcds, fname_labels, seq_id, fn = self.flist[index]
+        fname_pcds, fname_labels, seq_id, fn = '/home/zhenghu/datasets/zhito/J6/20230412_j6a1_sunny_huangdai_people_ros/midnflow_78_2127_0/sequence000/pcl/bin/1681288948.7002816.bin', \
+            '/home/zhenghu/SemanticKITTI/data/dataset/sequences/08/labels/000000.label', '08', '000000.bin'
+
+        #load point clouds and label file
+        pcds = np.fromfile(fname_pcds, dtype=np.float32)
+        pcds = pcds.reshape((-1, 4))
+        pcds[...,-1] = pcds[...,-1]/255
+        # pcds[...,-2] = pcds[...,-2]+1.7
+
+        pcds_total = np.concatenate((pcds, np.zeros([pcds.shape[0],2])), axis=1)
+
+        pdb.set_trace()
+
+
+        pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset = self.form_batch(pcds_total)
+        pcds_xyzi = pcds_xyzi.unsqueeze(0)
+        pcds_coord = pcds_coord.unsqueeze(0)
+        pcds_sphere_coord = pcds_sphere_coord.unsqueeze(0)
+        pcds_sem_label = pcds_sem_label.unsqueeze(0)
+        pcds_ins_label = pcds_ins_label.unsqueeze(0)
+        pcds_offset = pcds_offset.unsqueeze(0)
+
+        # pano_label = torch.LongTensor(pano_label.astype(np.long))
+        return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, torch.LongTensor(), seq_id, fn
+
+
     def __getitem__(self, index):
+        # return self.__getitem___zhito(index)
         fname_pcds, fname_labels, seq_id, fn = self.flist[index]
 
         #load point clouds and label file

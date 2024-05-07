@@ -13,6 +13,7 @@ from . import common_utils
 import yaml
 import copy
 import pdb
+import time
 
 
 class MVFuse(nn.Module):
@@ -122,36 +123,78 @@ class AttNet(nn.Module):
             pcds_coord (BS, N, 3, 1), 3 -> (x_quan, y_quan, z_quan)
             pcds_sphere_coord (BS, N, 2, 1), 2 -> (vertical_quan, horizon_quan)
         '''
+        t0 = time.time()
         pcds_coord_wl = pcds_coord[:, :, :2].contiguous()
+        # torch.Size([4, 64, 123174, 1])
         point_feat_tmp = self.point_pre(point_feat)
-
+        torch.cuda.synchronize()
+        t1 = time.time()
         # range-view
         rv_input = common_utils.VoxelMaxPool(pcds_feat=point_feat_tmp, pcds_ind=pcds_sphere_coord, output_size=self.rv_shape, scale_rate=(1.0, 1.0))
+        # pdb.set_trace() # torch.Size([4, 64, 64, 2048])
+        # torch.Size([4, 80, 64, 1024])
+        torch.cuda.synchronize()
+        t2 = time.time()
         rv_feat_sem, rv_feat_ins = self.rv_net(rv_input)
+        torch.cuda.synchronize()
+        t3 = time.time()
 
         # bird-view
         bev_input = common_utils.VoxelMaxPool(pcds_feat=point_feat_tmp, pcds_ind=pcds_coord_wl, output_size=self.bev_wl_shape, scale_rate=(1.0, 1.0))
+        # pdb.set_trace() #torch.Size([4, 64, 600, 600])
+        # torch.Size([4, 80, 300, 300])
+        torch.cuda.synchronize()
+        t4 = time.time()
         bev_feat_sem, bev_feat_ins = self.bev_net(bev_input)
+        torch.cuda.synchronize()
+        t5 = time.time()
 
         # mv fuse0
+        # torch.Size([4, 64, 123174, 1]) torch.Size([4, 20, 123174, 1]) torch.Size([4, 123174, 3]) torch.Size([4, 123174, 1])
         point_feat_sem0, pred_sem0, pred_offset0, pred_hmap0 =\
             self.mv_fuse0(point_feat_tmp, bev_feat_sem, bev_feat_ins, pcds_coord_wl, rv_feat_sem, rv_feat_ins, pcds_sphere_coord)
         
         pred_offset0_high_conf = pred_offset0.detach() * (pred_hmap0 > self.point_nms_dic['score_thresh']).float()
-
+        torch.cuda.synchronize()
+        t6 = time.time()
         # reprojection
         pcds_coord_wl_reproj, pcds_sphere_coord_reproj = common_utils.reproj_with_offset(point_feat, pred_offset0_high_conf,\
             self.pModel.Voxel, self.dx, self.dy, self.phi_range_radian, self.theta_range_radian, self.dphi, self.dtheta)
         
         rv_reproj_feat = common_utils.VoxelMaxPool(pcds_feat=point_feat_sem0, pcds_ind=pcds_sphere_coord_reproj, output_size=tuple(rv_feat_sem.shape[2:]), scale_rate=self.pModel.RVParam.rv_grid2point['scale_rate'])
         bev_reproj_feat = common_utils.VoxelMaxPool(pcds_feat=point_feat_sem0, pcds_ind=pcds_coord_wl_reproj, output_size=tuple(bev_feat_sem.shape[2:]), scale_rate=self.pModel.BEVParam.bev_grid2point['scale_rate'])
-
+        torch.cuda.synchronize()
+        t7 = time.time()
         rv_feat_sem_final, rv_feat_ins_final = self.rv_fuse0(rv_feat_sem, rv_reproj_feat)
         bev_feat_sem_final, bev_feat_ins_final = self.bev_fuse0(bev_feat_sem, bev_reproj_feat)
+        torch.cuda.synchronize()
+        t8 = time.time()
 
         point_feat_sem1, pred_sem1, pred_offset1, pred_hmap1 =\
             self.mv_fuse1(point_feat_tmp, bev_feat_sem_final, bev_feat_ins_final, pcds_coord_wl, rv_feat_sem_final, rv_feat_ins_final, pcds_sphere_coord)
-        
+        torch.cuda.synchronize()
+        t9 = time.time()
+        # pdb.set_trace()
+
+        # print('t0:', t1-t0)
+        # print('t1:', t2-t1)
+        # print('t2:', t3-t2)
+        # print('t3:', t4-t3)
+        # print('t4:', t5-t4)
+        # print('t5:', t6-t5)
+        # print('t6:', t7-t6)
+        # print('t7:', t8-t7)
+        # print('t8:', t9-t8)
+        # t0: 0.027481555938720703
+        # t1: 0.002534627914428711
+        # t2: 0.026325464248657227
+        # t3: 0.003777027130126953
+        # t4: 0.03788185119628906
+        # t5: 0.055251121520996094
+        # t6: 0.007248878479003906
+        # t7: 0.022937297821044922
+        # t8: 0.01729750633239746
+
         return pred_sem0, pred_offset0, pred_hmap0, pred_sem1, pred_offset1, pred_hmap1
     
     def consistency_loss_l1(self, pred_cls, pred_cls_raw):

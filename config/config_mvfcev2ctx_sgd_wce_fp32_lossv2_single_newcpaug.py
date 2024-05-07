@@ -5,10 +5,10 @@ def get_config():
     class General:
         log_frequency = 100
         name = __name__.rsplit("/")[-1].rsplit(".")[-1]
-        batch_size_per_gpu = 2
+        batch_size_per_gpu = 1
         fp16 = True
 
-        SeqDir = './data/SemanticKITTI/dataset/sequences'
+        SeqDir = '/home/zhenghu/SemanticKITTI/data/dataset/sequences'
         category_list = ['car', 'bicycle', 'motorcycle', 'truck', 'other-vehicle', 'person', 'bicyclist', 'motorcyclist',
                         'road', 'parking', 'sidewalk', 'other-ground', 'building', 'fence', 'vegetation', 'trunk',
                         'terrain', 'pole', 'traffic-sign']
@@ -27,14 +27,14 @@ def get_config():
     class DatasetParam:
         class Train:
             data_src = 'data'
-            num_workers = 4
+            num_workers = 1
             frame_point_num = 130000
             SeqDir = General.SeqDir
             Voxel = General.Voxel
             center_type = General.center_type
             class CopyPasteAug:
                 is_use = True
-                ObjBackDir = './data/object_bank'
+                ObjBackDir = '/home/zhenghu/SemanticKITTI/object_bank_semkitti'
                 paste_max_obj_num = 20
             class AugParam:
                 noise_mean = 0
@@ -45,7 +45,7 @@ def get_config():
         
         class Val:
             data_src = 'data'
-            num_workers = 4
+            num_workers = 0
             frame_point_num = 130000
             SeqDir = General.SeqDir
             Voxel = General.Voxel

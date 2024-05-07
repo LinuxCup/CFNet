@@ -26,7 +26,18 @@ import torch.backends.cudnn as cudnn
 cudnn.benchmark = True
 cudnn.enabled = True
 
+import yaml
+try:
+    import open3d
+    from visual_utils import open3d_vis_utils as V
+    OPEN3D_FLAG = True
+except:
+    import mayavi.mlab as mlab
+    from visual_utils import visualize_utils as V
+    OPEN3D_FLAG = False
 
+
+save_results = False
 def merge_offset_tta(pred_offset):
     '''
     Input:
@@ -56,16 +67,35 @@ def val_fp16(epoch, model, val_loader, category_list, save_path, rank=0):
     with torch.no_grad():
         for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, pano_label, seq_id, fn) in tqdm.tqdm(enumerate(val_loader)):
             pano_label = pano_label.numpy().astype(np.uint32)[0]
+            t0 = time.time()
             with torch.cuda.amp.autocast():
+                # torch.Size([4, 20, 123174, 1])  torch.Size([4, 123174, 3])  torch.Size([4, 123174, 1])
                 pred_sem, pred_offset, pred_hmap = model.infer(pcds_xyzi.squeeze(0).cuda(), pcds_coord.squeeze(0).cuda(), pcds_sphere_coord.squeeze(0).cuda())
-            
+            t1 = time.time()
+            # print('t total epasped:', t1-t0)
+            # pdb.set_trace()
             pred_sem = F.softmax(pred_sem, dim=1).mean(dim=0).permute(2, 1, 0).contiguous()[0]
             pred_offset = merge_offset_tta(pred_offset)
             pred_hmap = pred_hmap.mean(dim=0).squeeze(1)
 
             # make result
+            torch.cuda.synchronize()
+            t2 = time.time()
             pred_obj_center, pred_panoptic = pv_nms(pcds_xyzi[0, 0, :3, :, 0].T.contiguous().cuda(), pred_sem, pred_offset, pred_hmap)
+            torch.cuda.synchronize()
+            t3 = time.time()
+            # print('post:', t3-t2)
             pred_panoptic = pred_panoptic.cpu().numpy().astype(np.uint32)
+            # pdb.set_trace()
+            if save_results:
+                frame_id = fn[0].split('.')[0]
+                pre_dir = os.path.join("./experiments/config_mvfcev2ctx_sgd_wce_fp32_lossv2_single_newcpaug/sequences/08/predictions", '{:0>6}.label'.format(frame_id))
+                # np.save(pre_dir, pred_panoptic ) # invalid, the number of read file is lager than the number of write(original)
+                pred_panoptic.tofile(pre_dir)
+                # pdb.set_trace()
+            with open('datasets/semantic-kitti.yaml', 'r') as f:
+                kitti_cfg = yaml.load(f)
+                V.draw_scenes(pcds_xyzi[0][0].squeeze(2).permute(1,0), pred_panoptic, kitti_cfg, category_list)
 
             criterion_pano.addBatch(pred_panoptic & 0xFFFF, pred_panoptic, pano_label & 0xFFFF, pano_label)
         
@@ -86,7 +116,7 @@ def val(epoch, model, val_loader, category_list, save_path, rank=0):
         for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, pano_label, seq_id, fn) in tqdm.tqdm(enumerate(val_loader)):
             pano_label = pano_label.numpy().astype(np.uint32)[0]
             pred_sem, pred_offset, pred_hmap = model.infer(pcds_xyzi.squeeze(0).cuda(), pcds_coord.squeeze(0).cuda(), pcds_sphere_coord.squeeze(0).cuda())
-            
+
             pred_sem = F.softmax(pred_sem, dim=1).mean(dim=0).permute(2, 1, 0).contiguous()[0]
             pred_offset = merge_offset_tta(pred_offset)
             pred_hmap = pred_hmap.mean(dim=0).squeeze(1)
@@ -108,6 +138,7 @@ def val(epoch, model, val_loader, category_list, save_path, rank=0):
 def main(args, config):
     # parsing cfg
     pGen, pDataset, pModel, pOpt = config.get_config()
+    # pdb.set_trace()
 
     prefix = pGen.name
     save_path = os.path.join("experiments", prefix)
@@ -133,9 +164,11 @@ def main(args, config):
     model.eval()
 
     for epoch in range(args.start_epoch, args.end_epoch + 1, world_size):
+        # pdb.set_trace()
         if (epoch + rank) < (args.end_epoch + 1):
             pretrain_model = os.path.join(model_prefix, '{}-model.pth'.format(epoch + rank))
             model.load_state_dict(torch.load(pretrain_model, map_location='cpu'))
+            # pdb.set_trace()
             if pGen.fp16:
                 val_fp16(epoch + rank, model, val_loader, pGen.category_list, save_path, rank)
             else:
