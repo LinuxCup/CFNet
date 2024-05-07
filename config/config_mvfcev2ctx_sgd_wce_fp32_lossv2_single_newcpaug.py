@@ -91,10 +91,11 @@ def get_config():
     class OptimizeParam:
         class optimizer:
             type = "sgd"
-            base_lr = 0.02
+            base_lr = 0.00125 #0.005
             momentum = 0.9
             nesterov = True
             wd = 1e-3
+            clip_grad_norm = 10
         
         class schedule:
             type = "step"

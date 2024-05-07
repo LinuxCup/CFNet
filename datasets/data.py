@@ -80,7 +80,7 @@ class DataloadTrain(Dataset):
                     fname_pcds = os.path.join(fpath_pcds, fn)
                     fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
                     self.flist.append((fname_pcds, fname_labels, seq_id, fn))
-        
+        self.iter = 0
         print('Training Samples: ', len(self.flist))
 
     def form_batch(self, pcds_total):
@@ -175,10 +175,27 @@ class DataloadTrain(Dataset):
         # resample
         choice = np.random.choice(pcds_total.shape[0], self.frame_point_num, replace=True)
         pcds_total = pcds_total[choice]
+        # pdb.set_trace()
 
         # preprocess
         pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset = self.form_batch(pcds_total.copy())
         pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw = self.form_batch_raw(pcds_total.copy())
+        # pdb.set_trace()
+        # if torch.isnan(pcds_xyzi).any() or torch.isnan(pcds_sphere_coord).any() or torch.isnan(pcds_sem_label).any() \
+        #     or torch.isnan(pcds_ins_label).any()\
+        #     or torch.isnan(pcds_offset).any()\
+        #     or torch.isnan(pcds_xyzi_raw).any()\
+        #     or torch.isnan(pcds_coord_raw).any()\
+        #     or torch.isnan(pcds_sphere_coord_raw).any()\
+        #     or torch.isnan(pcds_sem_label_raw).any()\
+        #     or torch.isnan(pcds_ins_label_raw).any()\
+        #     or torch.isnan(pcds_offset_raw).any():
+        #     print("-----------------------")
+        #     print(index, fname_pcds, fname_labels, seq_id, fn)
+        #     assert False
+        # if (self.iter > 1750 and self.iter < 1760) : # for located at 1753 iter
+        #     print(index, fname_pcds, fname_labels, seq_id, fn)
+        # self.iter +=1
         return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
             pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, seq_id, fn
 
