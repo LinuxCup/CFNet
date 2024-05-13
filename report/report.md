@@ -1,6 +1,6 @@
 # CFNet
 
-by ZhengHu on 4/24/2024
+by ZhengHu on 5/9/2024
 
 
 
@@ -32,11 +32,11 @@ by ZhengHu on 4/24/2024
 
 当按照baseline超参设置学习率为0.005时，训练到8个epoch时出现了loss为nan情况。当时没有使用TensorBoard，只能通过打印分析。
 
-![loss_nan](/home/zhenghu/DeepLearning/CFNet/report/imgs/loss_nan.png)
+![loss_nan](imgs/loss_nan.png)
 
 情景二：
 
-这边进行了超参调整减小学习率（0.001）达成相关评估指标，当训练到最后一个epoch时loss会稍微上升，评估指标以倒数第二个epoch模型为测试基础，根据相关指标已完成基本复现。
+这边进行了超参调整减小学习率（0.001）达成相关评估指标，当训练到最后一个epoch时loss会稍微上升，评估指标以倒数第二个epoch模型为测试基础，相关指标相差无几。
 
 |          | lr    | epoch | gpus | bs   | PQ           | mIOU         |
 | -------- | ----- | ----- | ---- | ---- | ------------ | ------------ |
@@ -51,13 +51,13 @@ by ZhengHu on 4/24/2024
 
 优化训练实验，增加clip grad，训练未出现异常，loss曲线如下：
 
-![loss_smooth](/home/zhenghu/DeepLearning/CFNet/report/imgs/loss_smooth.png)
+![loss_smooth](imgs/loss_smooth.png)
 
 训练之后评估指标，训练70个epoch之后PQ值上升，mIOU下降，可能是由于过拟合导致。
 
 下标第2项实验调整学习率训练结束，评估指标PQ、mIOU均有所提升。
 
-| item |                    | lr      | epoch | gpus | bs   | PQ           | mIOU         | Note                  |
+| item | exp                | lr      | epoch | gpus | bs   | PQ           | mIOU         | Note                  |
 | ---- | ------------------ | ------- | ----- | ---- | ---- | ------------ | ------------ | --------------------- |
 | 0    | baseline           | 0.02    | 48    | 8    | 2    | 62.7         | 67.4         |                       |
 | 1    | own_clip(epoch_69) | 0.00125 | 70    | 4    | 1    | 63.4（+0.7） | 65.5（-1.9） | add clip for gradient |
