@@ -9,9 +9,11 @@ from scipy.spatial import Delaunay
 
 
 def gene_ins_label(pcds_label_use, inst_label):
-    pcds_ins_label = np.full((pcds_label_use.shape[0],), -1, dtype=np.long)
-    ins_num = 0
-    for cate_id in range(1, 9):
+    # pcds_ins_label = np.full((pcds_label_use.shape[0],), -1, dtype=np.int64)
+    # ins_num = 0
+    pcds_ins_label = np.full((pcds_label_use.shape[0],), 0, dtype=np.int64)
+    ins_num = 1
+    for cate_id in range(1, 11):
         valid_mask_cate_id = (pcds_label_use == cate_id)
         # indicate the categoty exists
         if valid_mask_cate_id.sum() > 0:
@@ -27,7 +29,7 @@ def gene_ins_label(pcds_label_use, inst_label):
 def gene_point_offset(pcds_total, center_type='mass'):
     assert center_type in ['mass', 'axis']
     pcds_xyz = pcds_total[:, :3]
-    pcds_ins_label = pcds_total[:, 5].astype(np.long)
+    pcds_ins_label = pcds_total[:, 5].astype(np.int64)
 
     pcds_offset = np.zeros((pcds_xyz.shape[0], 3), dtype=np.float32)
     if center_type == 'mass':

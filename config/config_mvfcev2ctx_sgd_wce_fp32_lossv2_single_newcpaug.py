@@ -8,7 +8,7 @@ def get_config():
         batch_size_per_gpu = 1
         fp16 = True
 
-        SeqDir = '/home/zhenghu/SemanticKITTI/data/dataset/sequences'
+        SeqDir = '/data/datasets/nuscenes/v1.0-trainval'
         category_list = ['car', 'bicycle', 'motorcycle', 'truck', 'other-vehicle', 'person', 'bicyclist', 'motorcyclist',
                         'road', 'parking', 'sidewalk', 'other-ground', 'building', 'fence', 'vegetation', 'trunk',
                         'terrain', 'pole', 'traffic-sign']

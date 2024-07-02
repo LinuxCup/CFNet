@@ -28,6 +28,17 @@ import torch.backends.cudnn as cudnn
 cudnn.deterministic = True
 cudnn.benchmark = False
 
+import yaml
+try:
+    import open3d
+    from visual_utils import open3d_vis_utils as V
+    OPEN3D_FLAG = True
+except:
+    import mayavi.mlab as mlab
+    from visual_utils import visualize_utils as V
+    OPEN3D_FLAG = False
+
+
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -71,7 +82,13 @@ def train_fp16(epoch, end_epoch, args, model, train_loader, optimizer, scheduler
     # torch.autograd.set_detect_anomaly(True)
     for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
         pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, seq_id, fn) in tqdm.tqdm(enumerate(train_loader)):
-        #pdb.set_trace()
+        # pdb.set_trace()
+        # with open('datasets/semantic-nuscenes.yaml', 'r') as f:
+        #     kitti_cfg = yaml.load(f)
+        #     # pdb.set_trace()
+        #     panoptic = pcds_sem_label[0].squeeze(1)+ ((pcds_ins_label[0].squeeze(1).int() << 16) & 0xFFFF0000)
+        #     V.draw_scenes(pcds_xyzi[0].squeeze(2).permute(1,0), panoptic, kitti_cfg)
+
         with torch.cuda.amp.autocast():
             loss = model(pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
                 pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw)
@@ -158,7 +175,9 @@ def main(args, config):
     tb_log = SummaryWriter(log_dir=str(os.path.join(save_path, "tensorboard"))) if args.local_rank == 0 else None
 
     # define dataloader
+    # pdb.set_trace()
     train_dataset = eval('datasets.{}.DataloadTrain'.format(pDataset.Train.data_src))(pDataset.Train)
+    
     train_sampler = DistributedSampler(train_dataset)
     train_loader = DataLoader(train_dataset,
                             batch_size=pGen.batch_size_per_gpu,
@@ -168,7 +187,7 @@ def main(args, config):
                             pin_memory=True)
 
     print("rank: {}/{}; batch_size: {}".format(rank, world_size, pGen.batch_size_per_gpu))
-
+    # pdb.set_trace()
     # define model
     base_net = eval(pModel.prefix).AttNet(pModel)
     # load pretrain model

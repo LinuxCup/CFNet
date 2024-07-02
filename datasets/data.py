@@ -13,6 +13,8 @@ import json
 from . import utils, copy_paste
 import os
 import pdb
+import pickle
+from nuscenes import NuScenes
 
 
 def make_point_feat(pcds_xyzi, pcds_coord, pcds_sphere_coord, Voxel):
@@ -50,7 +52,7 @@ class DataloadTrain(Dataset):
         self.config = config
         self.frame_point_num = config.frame_point_num
         self.Voxel = config.Voxel
-        with open('datasets/semantic-kitti.yaml', 'r') as f:
+        with open('datasets/semantic-nuscenes.yaml', 'r') as f:
             self.task_cfg = yaml.load(f)
         
         self.cp_aug = None
@@ -69,19 +71,28 @@ class DataloadTrain(Dataset):
                         shift_range=((0, 0), (0, 0), (0, 0)),
                         size_range=(1, 1))
         
+        with open('/data/datasets/nuscenes/v1.0-trainval/nuscenes_infos_train.pkl', 'rb') as f:
+            data = pickle.load(f)
+        self.metainfo = data['metainfo']
+        self.data_list = data['data_list']
+        self.data_path = '/data/datasets/nuscenes/v1.0-trainval'
+        self.test_mode = False
+        self.task = 'panoptic'
+        self.nusc = NuScenes(version='v1.0-trainval', dataroot='/data/datasets/nuscenes/v1.0-trainval', verbose=True)
+        # pdb.set_trace()
         # add training data
-        seq_split = [str(i).rjust(2, '0') for i in self.task_cfg['split']['train']]
-        for seq_id in seq_split:
-            fpath = os.path.join(config.SeqDir, seq_id)
-            fpath_pcds = os.path.join(fpath, 'velodyne')
-            fpath_labels = os.path.join(fpath, 'labels')
-            for fn in os.listdir(fpath_pcds):
-                if fn.endswith('.bin'):
-                    fname_pcds = os.path.join(fpath_pcds, fn)
-                    fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
-                    self.flist.append((fname_pcds, fname_labels, seq_id, fn))
-        self.iter = 0
-        print('Training Samples: ', len(self.flist))
+        # seq_split = [str(i).rjust(2, '0') for i in self.task_cfg['split']['train']]
+        # for seq_id in seq_split:
+        #     fpath = os.path.join(config.SeqDir, seq_id)
+        #     fpath_pcds = os.path.join(fpath, 'velodyne')
+        #     fpath_labels = os.path.join(fpath, 'labels')
+        #     for fn in os.listdir(fpath_pcds):
+        #         if fn.endswith('.bin'):
+        #             fname_pcds = os.path.join(fpath_pcds, fn)
+        #             fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
+        #             self.flist.append((fname_pcds, fname_labels, seq_id, fn))
+        # self.iter = 0
+        # print('Training Samples: ', len(self.flist))
 
     def form_batch(self, pcds_total):
         #augment pcds
@@ -111,8 +122,8 @@ class DataloadTrain(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
 
@@ -144,24 +155,97 @@ class DataloadTrain(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
+    
+    def pre_pipeline(self, results):
+        """Initialization before data preparation.
+
+        Args:
+            results (dict): Dict before data preprocessing.
+
+                - img_fields (list): Image fields.
+                - pts_mask_fields (list): Mask fields of points.
+                - pts_seg_fields (list): Mask fields of point segments.
+                - mask_fields (list): Fields of masks.
+                - seg_fields (list): Segment fields.
+        """
+        results['img_fields'] = []
+        results['pts_mask_fields'] = []
+        results['pts_seg_fields'] = []
+        results['mask_fields'] = []
+        results['seg_fields'] = []
+        results['bbox3d_fields'] = []
+
+    def get_ann_info(self, index):
+        """Get annotation info according to the given index.
+
+        Args:
+            index (int): Index of the annotation data to get.
+
+        Returns:
+            dict: annotation information consists of the following keys:
+
+                - pts_semantic_mask_path (str): Path of semantic masks.
+        """
+        # Use index to get the annos, thus the evalhook could also use this api
+        info = self.data_list[index]
+        #pts_semantic_mask_path = info['pts_filename'].replace('velodyne', 'labels')[:-3] + 'label'
+        lidar_sd_token = self.nusc.get('sample', info['token'])['data']['LIDAR_TOP']
+        anns_results = dict()
+        if self.task == 'semantic':
+            pts_semantic_mask_path = os.path.join(self.nusc.dataroot,
+                                                    self.nusc.get('lidarseg', lidar_sd_token)['filename']) #根据lidar token 找到 filename
+            anns_results['pts_semantic_mask_path']=pts_semantic_mask_path
+        if self.task == 'panoptic':
+            pts_panoptic_mask_path = os.path.join(self.nusc.dataroot,
+                                                self.nusc.get('panoptic', lidar_sd_token)['filename']) #根据lidar token 找到 filename
+            anns_results['pts_panoptic_mask_path']=pts_panoptic_mask_path
+        return anns_results
+
+    def prepare_train_data(self, index):
+        lidar_path = self.data_list[index]['lidar_points']['lidar_path'][16:]
+        info = self.data_list[index]
+        lidar_path = info['lidar_points']['lidar_path']
+        pts_filename = os.path.join(self.data_path, 'samples/LIDAR_TOP', lidar_path)
+        input_dict = dict(
+            pts_filename=pts_filename)
+
+        if not self.test_mode:
+            annos = self.get_ann_info(index)
+            input_dict['ann_info'] = annos
+        
+        self.pre_pipeline(input_dict)
+
+        return input_dict
 
     def __getitem__(self, index):
-        fname_pcds, fname_labels, seq_id, fn = self.flist[index]
+        data = self.prepare_train_data(index)
+
+        fname_pcds = data['pts_filename']
+        fname_labels = data['ann_info']['pts_panoptic_mask_path']
+        # fname_pcds, fname_labels, seq_id, fn = self.flist[index]
 
         #load point clouds and label file
         pcds = np.fromfile(fname_pcds, dtype=np.float32)
-        pcds = pcds.reshape((-1, 4))
+        pcds = pcds.reshape((-1, 5))
+        pcds = pcds[...,:4]
 
-        pcds_label = np.fromfile(fname_labels, dtype=np.uint32)
-        pcds_label = pcds_label.reshape((-1))
 
-        sem_label = pcds_label & 0xFFFF
-        inst_label = pcds_label >> 16
+        pcds_label = np.load(fname_labels)['data']
+        sem_label = (pcds_label // 1000).astype(np.uint8)
+        inst_label = pcds_label % 1000
+        
 
+        # sem_label = pcds_label & 0xFFFF
+        # inst_label = pcds_label >> 16
+        # pdb.set_trace()
+        # my_sample = self.nusc.sample[index]
+        # sample_data_token = my_sample['data']['LIDAR_TOP']
+        # self.nusc.render_sample_data(sample_data_token,with_anns=False,show_lidarseg=False,show_panoptic=True)
+        
         pcds_label_use = utils.relabel(sem_label, self.task_cfg['learning_map'])
         pcds_ins_label = utils.gene_ins_label(pcds_label_use, inst_label)
         
@@ -170,6 +254,7 @@ class DataloadTrain(Dataset):
             pcds, pcds_label_use, pcds_ins_label = self.cp_aug(pcds, pcds_label_use, pcds_ins_label)
         
         # merge pcds and labels
+        # pdb.set_trace()
         pcds_total = np.concatenate((pcds, pcds_label_use[:, np.newaxis], pcds_ins_label[:, np.newaxis]), axis=1)
 
         # resample
@@ -197,34 +282,42 @@ class DataloadTrain(Dataset):
         #     print(index, fname_pcds, fname_labels, seq_id, fn)
         # self.iter +=1
         return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset,\
-            pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, seq_id, fn
+            pcds_xyzi_raw, pcds_coord_raw, pcds_sphere_coord_raw, pcds_sem_label_raw, pcds_ins_label_raw, pcds_offset_raw, [], []
 
     def __len__(self):
-        return len(self.flist)
+        return len(self.data_list)
 
 
 # define the class of dataloader
 class DataloadVal(Dataset):
     def __init__(self, config):
-        self.flist = []
+        # self.flist = []
         self.config = config
         self.frame_point_num = config.frame_point_num
         self.Voxel = config.Voxel
-        with open('datasets/semantic-kitti.yaml', 'r') as f:
+        with open('datasets/semantic-nuscenes.yaml', 'r') as f:
             self.task_cfg = yaml.load(f)
+
+        with open('/data/datasets/nuscenes/v1.0-trainval/nuscenes_infos_val.pkl', 'rb') as f:
+            data = pickle.load(f)
+        self.metainfo = data['metainfo']
+        self.data_list = data['data_list']
+        self.data_path = '/data/datasets/nuscenes/v1.0-trainval'
+        self.test_mode = False
+        self.task = 'panoptic'
+        self.nusc = NuScenes(version='v1.0-trainval', dataroot='/data/datasets/nuscenes/v1.0-trainval', verbose=True)   
+        # seq_split = [str(i).rjust(2, '0') for i in self.task_cfg['split']['valid']]
+        # for seq_id in seq_split:
+        #     fpath = os.path.join(config.SeqDir, seq_id)
+        #     fpath_pcds = os.path.join(fpath, 'velodyne')
+        #     fpath_labels = os.path.join(fpath, 'labels')
+        #     for fn in os.listdir(fpath_pcds):
+        #         if fn.endswith('.bin'):
+        #             fname_pcds = os.path.join(fpath_pcds, fn)
+        #             fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
+        #             self.flist.append((fname_pcds, fname_labels, seq_id, fn))
         
-        seq_split = [str(i).rjust(2, '0') for i in self.task_cfg['split']['valid']]
-        for seq_id in seq_split:
-            fpath = os.path.join(config.SeqDir, seq_id)
-            fpath_pcds = os.path.join(fpath, 'velodyne')
-            fpath_labels = os.path.join(fpath, 'labels')
-            for fn in os.listdir(fpath_pcds):
-                if fn.endswith('.bin'):
-                    fname_pcds = os.path.join(fpath_pcds, fn)
-                    fname_labels = os.path.join(fpath_labels, fn.replace('.bin', '.label'))
-                    self.flist.append((fname_pcds, fname_labels, seq_id, fn))
-        
-        print('Validation Samples: ', len(self.flist))
+        # print('Validation Samples: ', len(self.flist))
     
     def form_batch(self, pcds_total):
         #quantize
@@ -251,8 +344,8 @@ class DataloadVal(Dataset):
         pcds_coord = torch.FloatTensor(pcds_coord.astype(np.float32))
         pcds_sphere_coord = torch.FloatTensor(pcds_sphere_coord.astype(np.float32))
 
-        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.long))
-        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.long))
+        pcds_sem_label = torch.LongTensor(pcds_sem_label.astype(np.int64))
+        pcds_ins_label = torch.LongTensor(pcds_ins_label.astype(np.int64))
         pcds_offset = torch.FloatTensor(pcds_offset.astype(np.float32))
         return pcds_xyzi.unsqueeze(-1), pcds_coord.unsqueeze(-1), pcds_sphere_coord.unsqueeze(-1), pcds_sem_label.unsqueeze(-1), pcds_ins_label.unsqueeze(-1), pcds_offset
     
@@ -280,28 +373,95 @@ class DataloadVal(Dataset):
         pcds_ins_label = pcds_ins_label.unsqueeze(0)
         pcds_offset = pcds_offset.unsqueeze(0)
 
-        # pano_label = torch.LongTensor(pano_label.astype(np.long))
+        # pano_label = torch.LongTensor(pano_label.astype(np.int64))
         return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, torch.LongTensor(), seq_id, fn
+    
+    
+    def pre_pipeline(self, results):
+        """Initialization before data preparation.
 
+        Args:
+            results (dict): Dict before data preprocessing.
+
+                - img_fields (list): Image fields.
+                - pts_mask_fields (list): Mask fields of points.
+                - pts_seg_fields (list): Mask fields of point segments.
+                - mask_fields (list): Fields of masks.
+                - seg_fields (list): Segment fields.
+        """
+        results['img_fields'] = []
+        results['pts_mask_fields'] = []
+        results['pts_seg_fields'] = []
+        results['mask_fields'] = []
+        results['seg_fields'] = []
+        results['bbox3d_fields'] = []
+
+    def get_ann_info(self, index):
+        """Get annotation info according to the given index.
+
+        Args:
+            index (int): Index of the annotation data to get.
+
+        Returns:
+            dict: annotation information consists of the following keys:
+
+                - pts_semantic_mask_path (str): Path of semantic masks.
+        """
+        # Use index to get the annos, thus the evalhook could also use this api
+        info = self.data_list[index]
+        #pts_semantic_mask_path = info['pts_filename'].replace('velodyne', 'labels')[:-3] + 'label'
+        lidar_sd_token = self.nusc.get('sample', info['token'])['data']['LIDAR_TOP']
+        anns_results = dict()
+        if self.task == 'semantic':
+            pts_semantic_mask_path = os.path.join(self.nusc.dataroot,
+                                                    self.nusc.get('lidarseg', lidar_sd_token)['filename']) #根据lidar token 找到 filename
+            anns_results['pts_semantic_mask_path']=pts_semantic_mask_path
+        if self.task == 'panoptic':
+            pts_panoptic_mask_path = os.path.join(self.nusc.dataroot,
+                                                self.nusc.get('panoptic', lidar_sd_token)['filename']) #根据lidar token 找到 filename
+            anns_results['pts_panoptic_mask_path']=pts_panoptic_mask_path
+        return anns_results
+
+    def prepare_train_data(self, index):
+        lidar_path = self.data_list[index]['lidar_points']['lidar_path'][16:]
+        info = self.data_list[index]
+        lidar_path = info['lidar_points']['lidar_path']
+        pts_filename = os.path.join(self.data_path, 'samples/LIDAR_TOP', lidar_path)
+        input_dict = dict(
+            pts_filename=pts_filename)
+
+        if not self.test_mode:
+            annos = self.get_ann_info(index)
+            input_dict['ann_info'] = annos
+        
+        self.pre_pipeline(input_dict)
+
+        return input_dict
 
     def __getitem__(self, index):
         # return self.__getitem___zhito(index)
-        fname_pcds, fname_labels, seq_id, fn = self.flist[index]
+
+        data = self.prepare_train_data(index)
+        fname_pcds = data['pts_filename']
+        fname_labels = data['ann_info']['pts_panoptic_mask_path']
+        # fname_pcds, fname_labels, seq_id, fn = self.flist[index]
 
         #load point clouds and label file
         pcds = np.fromfile(fname_pcds, dtype=np.float32)
-        pcds = pcds.reshape((-1, 4))
+        pcds = pcds.reshape((-1, 5))
+        pcds = pcds[...,:4]
 
-        pcds_label = np.fromfile(fname_labels, dtype=np.uint32)
-        pcds_label = pcds_label.reshape((-1))
 
-        sem_label = pcds_label & 0xFFFF
-        inst_label = pcds_label >> 16
+        pcds_label = np.load(fname_labels)['data']
+        sem_label = (pcds_label // 1000).astype(np.uint8)
+        inst_label = pcds_label % 1000
 
         pcds_label_use = utils.relabel(sem_label, self.task_cfg['learning_map'])
         pcds_ins_label = utils.gene_ins_label(pcds_label_use, inst_label)
+        # pdb.set_trace()
+
         
-        pano_label = (inst_label << 16) + pcds_label_use
+        # pano_label = (inst_label << 16) + pcds_label_use
         # merge pcds and labels
         pcds_total = np.concatenate((pcds, pcds_label_use[:, np.newaxis], pcds_ins_label[:, np.newaxis]), axis=1)
 
@@ -332,8 +492,8 @@ class DataloadVal(Dataset):
         pcds_sem_label = torch.stack(pcds_sem_label_list, dim=0)
         pcds_ins_label = torch.stack(pcds_ins_label_list, dim=0)
         pcds_offset = torch.stack(pcds_offset_list, dim=0)
-        pano_label = torch.LongTensor(pano_label.astype(np.long))
-        return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, pano_label, seq_id, fn
+        # pano_label = torch.LongTensor(pano_label.astype(np.int64))
+        return pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, [], []
     
     def __len__(self):
-        return len(self.flist)
+        return len(self.data_list)

@@ -60,7 +60,7 @@ def merge_offset_tta(pred_offset):
 
 
 def val_fp16(epoch, model, val_loader, category_list, save_path, rank=0):
-    # criterion_pano = PanopticEval(category_list, None, [0], min_points=50)
+    criterion_pano = PanopticEval(category_list, None, [0], min_points=50)
     model.eval()
     pv_nms = pytorch_lib.PointVoteNMS(model.point_nms_dic)
     f = open(os.path.join(save_path, 'record_fp16_{}.txt'.format(rank)), 'a')
@@ -87,21 +87,23 @@ def val_fp16(epoch, model, val_loader, category_list, save_path, rank=0):
             # print('post:', t3-t2)
             pred_panoptic = pred_panoptic.cpu().numpy().astype(np.uint32)
             # pdb.set_trace()
+            # if i > 100: break
             if save_results:
                 frame_id = fn[0].split('.')[0]
                 pre_dir = os.path.join("./experiments/config_mvfcev2ctx_sgd_wce_fp32_lossv2_single_newcpaug/sequences/08/predictions", '{:0>6}.label'.format(frame_id))
                 # np.save(pre_dir, pred_panoptic ) # invalid, the number of read file is lager than the number of write(original)
                 pred_panoptic.tofile(pre_dir)
                 # pdb.set_trace()
-            pdb.set_trace()
-            with open('datasets/semantic-nuscenes.yaml', 'r') as f:
-                kitti_cfg = yaml.load(f)
-                pdb.set_trace()
-                panoptic = pcds_sem_label[0].squeeze(1)+ ((pcds_ins_label[0].squeeze(1).int() << 16) & 0xFFFF0000)
-                V.draw_scenes(pcds_xyzi[0][0].squeeze(2).permute(1,0), panoptic, kitti_cfg)
+            pano_label = pcds_sem_label[0].squeeze(1).int()+ ((pcds_ins_label[0].squeeze(1).int() << 16) & 0xFFFF0000)
+            pano_label = pano_label[0].squeeze(1).numpy().astype(np.uint32)
+            # with open('datasets/semantic-nuscenes.yaml', 'r') as f:
+            #     kitti_cfg = yaml.load(f)
+            #     # pdb.set_trace()
+            #     V.draw_scenes(pcds_xyzi[0][0].squeeze(2).permute(1,0), pano_label, kitti_cfg)
 
             
-            # criterion_pano.addBatch(pred_panoptic & 0xFFFF, pred_panoptic, pano_label & 0xFFFF, pano_label)
+            # pdb.set_trace()
+            criterion_pano.addBatch(pred_panoptic & 0xFFFF, pred_panoptic, pano_label & 0xFFFF, pano_label)
         
         metric = criterion_pano.get_metric()
         string = 'Epoch {}'.format(epoch)

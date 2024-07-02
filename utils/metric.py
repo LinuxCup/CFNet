@@ -219,9 +219,10 @@ class PanopticEval:
       output_dict[class_str]["IoU"] = iou
     
     # split things and stuff
-    things = ['car', 'bicycle', 'motorcycle', 'truck', 'other-vehicle', 'person', 'bicyclist', 'motorcyclist']
-    stuff = ['road', 'parking', 'sidewalk', 'other-ground', 'building', 'fence', 'vegetation', 'trunk',
-    'terrain', 'pole', 'traffic-sign']
+    things = ['barrier', 'bicycle', 'bus', 'car', 'construction_vehicle', 'motorcycle', 'pedestrian', 'traffic_cone', 
+                'trailer', 'truck']
+    stuff = ['driveable_surface', 'other_flat', 'sidewalk', 'terrain', 'manmade', 'vegetation']
+
     all_classes = things + stuff
 
     PQ_all = np.mean([float(output_dict[c]["PQ"]) for c in all_classes])
