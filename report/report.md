@@ -28,13 +28,15 @@ by ZhengHu on 5/9/2024
 
 ## 指标复现
 
-情景一：
+### SemanticKITTI Dataset
+
+实验1：
 
 当按照baseline超参设置学习率为0.005时，训练到8个epoch时出现了loss为nan情况。当时没有使用TensorBoard，只能通过打印分析。
 
 ![loss_nan](imgs/loss_nan.png)
 
-情景二：
+实验2：
 
 这边进行了超参调整减小学习率（0.001）达成相关评估指标，当训练到最后一个epoch时loss会稍微上升，评估指标以倒数第二个epoch模型为测试基础，相关指标相差无几。
 
@@ -47,7 +49,7 @@ by ZhengHu on 5/9/2024
 
 ![loss_jump](imgs/loss_jump.png)
 
-情景三：
+实验3：
 
 优化训练实验，增加clip grad，训练未出现异常，loss曲线如下：
 
@@ -66,6 +68,40 @@ by ZhengHu on 5/9/2024
 
 
 
+
+### Nuscenes Dataset
+工程代码中没有使用nuscenes数据集适配，相较于SemanticKITTI数据差异及标注label差异，需要做以下工作：dataset.py实现，label对齐适配，配置档适配。
+
+
+
+实验1：相关评估指标不及baseline，可视化结果如下：
+
+| ![nuscenes_1](imgs/nuscenes_1.png) | ![nuscenes_1](imgs/nuscenes_2.png) |
+| ---------------------------------- | ---------------------------------- |
+
+分析可能原因：1.论文中需要融合前视图特征（SemanticKITTi使用64线，Nuscenes使用32线），调整相关分辨率参数；2.loss可视化还有下降空间，需要调整超参。
+
+![loss_nuscenes_1](imgs/loss_nuscenes_1.png)
+
+
+
+实验2：使用32线分辨率，性能有所下降。
+
+实验3：还是采用之前的分辨率64线，分析代码bug如下：
+
+​	a.作者没有公开在nuscenes上的配置档和dataset，需要自行实现
+
+​	b.在实现label过程中将8类归为things，而论文中介绍将10类归于things，具体代码位于utils.py
+
+训练之后的结果如下标所示，总体来说达到复现指标。
+
+| item | exp                | lr     | epoch | gpus | bs   | PQ   | mIOU | Note              |
+| ---- | ------------------ | ------ | ----- | ---- | ---- | ---- | ---- | ----------------- |
+| 0    | baseline           | 0.02   | 48    | 8    | 2    | 75.1 | 79.3 |                   |
+| 1    | own_clip(epoch_69) | 0.0005 | 70    | 4    | 1    | 73.0 | 75.5 | 64 for range view |
+| 2    | own_clip(epoch_69) | 0.0005 | 70    | 4    | 1    | 69.1 | 72.5 | 32 for range view |
+|      |                    |        |       |      |      |      |      |                   |
+| 3    | own_clip(epoch_69) | 0.0005 | 70    | 4    | 1    | 76.9 | 78.7 | 64                |
 
 
 

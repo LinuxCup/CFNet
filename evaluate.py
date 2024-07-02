@@ -60,13 +60,13 @@ def merge_offset_tta(pred_offset):
 
 
 def val_fp16(epoch, model, val_loader, category_list, save_path, rank=0):
-    criterion_pano = PanopticEval(category_list, None, [0], min_points=50)
+    # criterion_pano = PanopticEval(category_list, None, [0], min_points=50)
     model.eval()
     pv_nms = pytorch_lib.PointVoteNMS(model.point_nms_dic)
     f = open(os.path.join(save_path, 'record_fp16_{}.txt'.format(rank)), 'a')
     with torch.no_grad():
-        for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, pano_label, seq_id, fn) in tqdm.tqdm(enumerate(val_loader)):
-            pano_label = pano_label.numpy().astype(np.uint32)[0]
+        for i, (pcds_xyzi, pcds_coord, pcds_sphere_coord, pcds_sem_label, pcds_ins_label, pcds_offset, seq_id, fn) in tqdm.tqdm(enumerate(val_loader)):
+            # pano_label = pano_label.numpy().astype(np.uint32)[0]
             t0 = time.time()
             with torch.cuda.amp.autocast():
                 # torch.Size([4, 20, 123174, 1])  torch.Size([4, 123174, 3])  torch.Size([4, 123174, 1])
@@ -93,11 +93,15 @@ def val_fp16(epoch, model, val_loader, category_list, save_path, rank=0):
                 # np.save(pre_dir, pred_panoptic ) # invalid, the number of read file is lager than the number of write(original)
                 pred_panoptic.tofile(pre_dir)
                 # pdb.set_trace()
-            with open('datasets/semantic-kitti.yaml', 'r') as f:
+            pdb.set_trace()
+            with open('datasets/semantic-nuscenes.yaml', 'r') as f:
                 kitti_cfg = yaml.load(f)
-                V.draw_scenes(pcds_xyzi[0][0].squeeze(2).permute(1,0), pred_panoptic, kitti_cfg, category_list)
+                pdb.set_trace()
+                panoptic = pcds_sem_label[0].squeeze(1)+ ((pcds_ins_label[0].squeeze(1).int() << 16) & 0xFFFF0000)
+                V.draw_scenes(pcds_xyzi[0][0].squeeze(2).permute(1,0), panoptic, kitti_cfg)
 
-            criterion_pano.addBatch(pred_panoptic & 0xFFFF, pred_panoptic, pano_label & 0xFFFF, pano_label)
+            
+            # criterion_pano.addBatch(pred_panoptic & 0xFFFF, pred_panoptic, pano_label & 0xFFFF, pano_label)
         
         metric = criterion_pano.get_metric()
         string = 'Epoch {}'.format(epoch)
